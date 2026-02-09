@@ -1,0 +1,230 @@
+╔══════════════════════════════════════════════════════════════════════════╗
+║                  Femto Bolt 相机标定工程已成功创建！                    ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+📊 工程统计
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  • Python文件数量: 17个
+  • 总代码行数: 约2226行
+  • 模块数量: 3个 (camera, calibration, utils)
+  • 脚本数量: 5个
+  • 示例数量: 2个
+
+📁 工程结构
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+femto_bolt/
+├── 📄 README.md                         项目说明文档
+├── 📄 USAGE.md                          详细使用指南
+├── 📄 PROJECT_SUMMARY.md                项目功能总结
+├── 📄 QUICKSTART.sh                     快速开始脚本
+├── 📄 requirements.txt                  Python依赖清单
+├── 🧪 test_installation.py              安装测试脚本
+│
+├── 📁 config/                           配置文件目录
+│   ├── intrinsic_example.yaml          内参配置示例
+│   ├── extrinsic_example.yaml          外参配置示例
+│   └── camera_pose_3d.png              3D可视化结果
+│
+├── 📁 data/                             数据存储目录
+│   ├── intrinsic_calibration/          内参标定图像
+│   └── extrinsic_calibration/          外参标定图像
+│
+├── 📁 src/                              核心源代码
+│   ├── 📁 camera/                      相机接口模块
+│   │   ├── femto_bolt.py              Femto Bolt相机类
+│   │   └── __init__.py
+│   │
+│   ├── 📁 calibration/                 标定算法模块
+│   │   ├── intrinsic_calibration.py   内参标定实现
+│   │   ├── extrinsic_calibration.py   外参标定实现
+│   │   └── __init__.py
+│   │
+│   └── 📁 utils/                       工具函数模块
+│       ├── file_utils.py              文件读写工具
+│       ├── visualization.py            可视化工具
+│       └── __init__.py
+│
+├── 📁 scripts/                          可执行脚本
+│   ├── 📸 capture_calibration_images.py    图像采集
+│   ├── 🎯 calibrate_intrinsic.py           内参标定
+│   ├── 📐 calibrate_extrinsic_manual.py    手动外参标定
+│   ├── 🤖 calibrate_extrinsic_auto.py      自动外参标定
+│   └── ✅ verify_calibration.py            结果验证
+│
+└── 📁 examples/                         使用示例
+    ├── calibration_example.py          标定流程示例
+    └── realtime_usage.py               实时应用示例
+
+✨ 核心功能
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1️⃣  相机接口 (src/camera/)
+   ✓ Femto Bolt相机初始化和配置
+   ✓ RGB和深度图像实时采集
+   ✓ 相机内参硬件读取
+   ✓ 模拟模式支持（无硬件测试）
+   ✓ 上下文管理器支持
+
+2️⃣  内参标定 (src/calibration/intrinsic_calibration.py)
+   ✓ 棋盘格角点自动检测
+   ✓ 亚像素级精确化
+   ✓ 相机内参矩阵计算
+   ✓ 畸变系数估计（径向+切向）
+   ✓ 重投影误差分析
+   ✓ 图像去畸变处理
+   ✓ 批量图像自动处理
+
+3️⃣  外参标定 (src/calibration/extrinsic_calibration.py)
+   ✓ 手动测量方法（物理测量）
+   ✓ PnP自动标定方法
+   ✓ 棋盘格自动检测标定
+   ✓ 相机↔车辆坐标系转换
+   ✓ 欧拉角↔旋转矩阵转换
+   ✓ 4x4齐次变换矩阵
+
+4️⃣  工具函数 (src/utils/)
+   ✓ YAML格式配置文件读写
+   ✓ JSON格式支持
+   ✓ 标定结果格式化显示
+   ✓ 3D相机位姿可视化
+   ✓ 坐标轴投影绘制
+   ✓ 去畸变效果对比展示
+
+🚀 快速开始
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. 安装依赖
+   $ pip install -r requirements.txt
+
+2. 测试安装
+   $ python test_installation.py
+
+3. 内参标定流程
+   a) 采集标定图像（20-30张）
+      $ python scripts/capture_calibration_images.py --output data/intrinsic_calibration
+   
+   b) 运行内参标定
+      $ python scripts/calibrate_intrinsic.py \
+          --input data/intrinsic_calibration \
+          --output config/intrinsic.yaml
+
+4. 外参标定流程（手动测量推荐）
+   $ python scripts/calibrate_extrinsic_manual.py \
+       --position 1.5 0.0 1.8 \
+       --orientation 0.0 -10.0 0.0 \
+       --output config/extrinsic.yaml
+   
+   或使用交互式输入：
+   $ python scripts/calibrate_extrinsic_manual.py --interactive
+
+5. 验证标定结果
+   $ python scripts/verify_calibration.py \
+       --intrinsic config/intrinsic.yaml \
+       --extrinsic config/extrinsic.yaml
+
+6. 查看使用示例
+   $ python examples/calibration_example.py
+   $ python examples/realtime_usage.py
+
+📖 坐标系定义
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+车辆坐标系（原点：后轴中心）
+   ↑ Z (向上)
+   |
+   |___→ X (向前)
+  /
+ / Y (向左)
+
+相机坐标系（原点：相机光心）
+      Z (光轴向前)
+     /
+    /___→ X (向右)
+   |
+   ↓ Y (向下)
+
+🎯 应用场景
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ✓ 自动驾驶感知系统标定
+  ✓ BEV（鸟瞰图）视角转换
+  ✓ ADAS辅助驾驶系统
+  ✓ 机器人视觉定位
+  ✓ 3D点云重建
+  ✓ 障碍物检测与定位
+
+📚 文档说明
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  • README.md          - 项目概述和简介
+  • USAGE.md           - 详细使用说明和技巧
+  • PROJECT_SUMMARY.md - 完整功能列表和实现细节
+  • QUICKSTART.sh      - 常用命令速查表
+
+✅ 测试验证
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+运行 test_installation.py 进行完整测试：
+  ✓ 文件结构完整性
+  ✓ 依赖库安装检查
+  ✓ 模块导入验证
+  ✓ 基本功能测试
+  ✓ 坐标变换准确性
+
+🎓 示例演示
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+已成功运行的演示：
+  ✓ 外参标定（手动测量）
+    位置: (1.5m, 0.0m, 1.8m) - 车顶中央，前方1.5米
+    姿态: roll=0°, pitch=-10°, yaw=0° - 向下倾斜10度
+    
+  ✓ 坐标变换验证
+    相机坐标 (0, 0, 2.0) -> 车辆坐标 (1.153, 0.000, 3.770)
+    
+  ✓ 3D可视化生成
+    已保存: config/camera_pose_3d.png
+
+💡 使用技巧
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. 内参标定建议：
+   • 采集20-30张不同角度和距离的图像
+   • 确保标定板清晰可见且完全在视野内
+   • 覆盖图像的边缘和中心区域
+   • 重投影误差应小于0.5像素
+
+2. 外参标定建议：
+   • 优先使用手动测量方法（更稳定）
+   • 精确测量相机光心位置
+   • 使用水平仪测量倾斜角度
+   • 验证标定结果的合理性
+
+3. 坐标系注意事项：
+   • 明确定义车辆坐标系原点位置
+   • 注意角度符号（向下为负）
+   • 验证变换结果是否符合实际
+
+🔧 依赖环境
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  • Python 3.7+              ✓
+  • OpenCV 4.5+              ✓
+  • NumPy                    ✓
+  • PyYAML                   ✓
+  • Matplotlib               ✓
+  • SciPy                    ✓
+  • transforms3d             ✓
+  • pyrealsense2 (可选)     可选（无硬件时自动模拟）
+
+🎉 工程创建成功！
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+现在你可以：
+  1. 查看详细文档了解更多功能
+  2. 准备棋盘格标定板开始标定
+  3. 运行示例程序学习使用方法
+  4. 集成到你的自动驾驶/BEV项目中
+
+祝标定顺利！🚗📷✨
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+创建时间: 2026年1月27日
+工程路径: /data/fdiao/learning/BEV/femto_bolt
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

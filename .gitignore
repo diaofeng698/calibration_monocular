@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Data
+data/intrinsic_calibration/*.png
+data/intrinsic_calibration/*.jpg
+data/extrinsic_calibration/*.png
+data/extrinsic_calibration/*.jpg
+
+# Config (keep examples)
+config/intrinsic.yaml
+config/extrinsic.yaml
+config/extrinsic_auto.yaml
+
+# Output
+*.pyc
+*.pyo
+*.log
+verification_3d.png
+frame_*.png
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb
