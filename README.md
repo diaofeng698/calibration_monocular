@@ -27,9 +27,17 @@ pip install -r requirements.txt
 # 采集标定图像
 python scripts/capture_calibration_images.py --output data/intrinsic_calibration
 
+# 🆕 分析标定图像覆盖率（可选，推荐）
+python scripts/analyze_calibration_coverage.py \
+    --input data/intrinsic_calibration \
+    --output results/coverage_analysis.png \
+    --report results/coverage_report.txt
+
 # 运行内参标定
 python scripts/calibrate_intrinsic.py --input data/intrinsic_calibration --output config/intrinsic.yaml
 ```
+
+> 💡 **提示**: 使用覆盖率分析工具可以帮助你识别标定图像的不足之处，针对性地补充图像，提高标定质量！
 
 ### 2. 外参标定
 
@@ -38,7 +46,7 @@ python scripts/calibrate_intrinsic.py --input data/intrinsic_calibration --outpu
 python scripts/calibrate_extrinsic_manual.py --output config/extrinsic.yaml
 
 # 或使用标定板自动标定
-python scripts/calibrate_extrinsic_auto.py --intrinsic config/intrinsic.yaml --output config/extrinsic.yaml --image data/extrinsic_calibration/frame_1770600232644000053.png --board-position 1.07 0.185 1.01
+python scripts/calibrate_extrinsic_auto.py --intrinsic config/intrinsic.yaml --output config/extrinsic.yaml --image data/extrinsic_calibration/frame_1770630757888999939.png --board-to-vehicle 1.04 -0.575 0.89 0 0 0
 ```
 
 ### 3. 验证标定结果
@@ -74,6 +82,25 @@ python examples/realtime_3d_examples.py
 - 按 `q` 键: 退出
 
 详细使用指南请参考: [INTERACTIVE_3D_GUIDE.md](INTERACTIVE_3D_GUIDE.md)
+
+## 工具脚本
+
+### 标定工具
+- `capture_calibration_images.py` - 采集标定图像
+- `calibrate_intrinsic.py` - 相机内参标定
+- `calibrate_extrinsic_manual.py` - 手动外参标定
+- `calibrate_extrinsic_auto.py` - 自动外参标定
+- `verify_calibration.py` - 验证标定结果
+
+### 🆕 分析工具
+- `analyze_calibration_coverage.py` - 标定图像覆盖率分析
+  - 可视化角点分布
+  - 识别需要补充图像的区域
+  - 生成覆盖率热图和详细报告
+  - [使用文档](docs/COVERAGE_ANALYSIS.md) | [快速参考](docs/COVERAGE_ANALYSIS_QUICK.md)
+
+### 可视化工具
+- `view_3d_interactive.py` - 实时交互式3D可视化
 
 ## 目录结构
 

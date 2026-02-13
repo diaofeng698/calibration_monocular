@@ -1,10 +1,15 @@
 """
 相机外参标定
 计算相机相对于汽车后轴中心的变换矩阵
+
+坐标系定义:
+1. 棋盘格坐标系: 左上角角点为原点, X轴水平向右, Y轴垂直向下, Z轴向外(垂直棋盘格平面)
+2. 车辆坐标系: 后轴中心为原点, X轴向前(车头方向), Y轴向左, Z轴向上
+3. 相机坐标系: 相机光心为原点, X轴向右, Y轴向下, Z轴向前(光轴方向)
 """
 import numpy as np
 import cv2
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Union, List
 from transforms3d.euler import euler2mat, mat2euler
 
 
@@ -67,7 +72,8 @@ class ExtrinsicCalibration:
                  image_points: np.ndarray,
                  camera_matrix: np.ndarray,
                  dist_coeffs: np.ndarray,
-                 marker_to_vehicle_transform: np.ndarray) -> dict:
+                 marker_to_vehicle_transform: np.ndarray,
+                 use_fisheye: bool = True) -> dict:
         """
         通过PnP算法计算外参
         
@@ -77,41 +83,60 @@ class ExtrinsicCalibration:
             camera_matrix: 相机内参矩阵
             dist_coeffs: 畸变系数
             marker_to_vehicle_transform: 标定板坐标系到车辆坐标系的变换矩阵 (4x4)
+            use_fisheye: 是否使用鱼眼相机模型
             
         Returns:
             包含外参的字典
         """
-        # 使用PnP求解相机位姿
-        success, rvec, tvec = cv2.solvePnP(
-            object_points,
-            image_points,
-            camera_matrix,
-            dist_coeffs,
-            flags=cv2.SOLVEPNP_ITERATIVE
-        )
+        # 使用PnP求解相机位姿（相机到标定板）
+        if use_fisheye:
+            # 鱼眼相机需要特殊处理，先去畸变图像点
+            # OpenCV的fisheye模块不直接提供solvePnP，需要使用undistortPoints
+            image_points_undistorted = cv2.fisheye.undistortPoints(
+                image_points, camera_matrix, dist_coeffs, P=camera_matrix
+            )
+            # 使用去畸变后的点和无畸变模型求解
+            success, rvec, tvec = cv2.solvePnP(
+                object_points,
+                image_points_undistorted,
+                camera_matrix,
+                None,  # 已去畸变，不需要畸变系数
+                flags=cv2.SOLVEPNP_ITERATIVE
+            )
+        else:
+            # 标准相机模型
+            success, rvec, tvec = cv2.solvePnP(
+                object_points,
+                image_points,
+                camera_matrix,
+                dist_coeffs,
+                flags=cv2.SOLVEPNP_ITERATIVE
+            )
         
         if not success:
             raise ValueError("PnP求解失败")
         
-        # 转换旋转向量为旋转矩阵
-        R_marker_to_camera, _ = cv2.Rodrigues(rvec)
-        t_marker_to_camera = tvec.flatten()
+        # 转换旋转向量为旋转矩阵（相机到标定板）
+        R_cam_to_board, _ = cv2.Rodrigues(rvec)
+        t_cam_to_board = tvec.flatten()
         
-        # 构建标定板到相机的变换矩阵
-        T_marker_to_camera = np.eye(4)
-        T_marker_to_camera[:3, :3] = R_marker_to_camera
-        T_marker_to_camera[:3, 3] = t_marker_to_camera
+        # 构建相机到标定板的变换矩阵
+        T_cam_to_board = np.eye(4)
+        T_cam_to_board[:3, :3] = R_cam_to_board
+        T_cam_to_board[:3, 3] = t_cam_to_board
         
-        # 计算相机到标定板的变换（求逆）
-        T_camera_to_marker = np.linalg.inv(T_marker_to_camera)
+        # 计算标定板到相机的变换（求逆）
+        T_board_to_cam = np.linalg.inv(T_cam_to_board)
         
         # 计算相机到车辆坐标系的变换
-        T_camera_to_vehicle = marker_to_vehicle_transform @ T_camera_to_marker
+        # T_cam_to_vehicle = T_board_to_vehicle @ T_cam_to_board
+        T_board_to_vehicle = marker_to_vehicle_transform
+        T_cam_to_vehicle = T_board_to_vehicle @ T_board_to_cam
         
         # 提取旋转和平移
-        self.rotation_matrix = T_camera_to_vehicle[:3, :3]
-        self.translation_vector = T_camera_to_vehicle[:3, 3]
-        self.transformation_matrix = T_camera_to_vehicle
+        self.rotation_matrix = T_cam_to_vehicle[:3, :3]
+        self.translation_vector = T_cam_to_vehicle[:3, 3]
+        self.transformation_matrix = T_cam_to_vehicle
         
         print("外参标定完成（PnP方法）:")
         print(f"旋转矩阵:\n{self.rotation_matrix}")
@@ -125,19 +150,27 @@ class ExtrinsicCalibration:
                          dist_coeffs: np.ndarray,
                          checkerboard_size: Tuple[int, int],
                          square_size: float,
-                         board_position: Tuple[float, float, float],
-                         board_orientation: Tuple[float, float, float]) -> dict:
+                         board_to_vehicle_pose: Union[List[float], Tuple[float, ...]],
+                         rear_axle_offset: Optional[Union[List[float], Tuple[float, ...]]] = None,
+                         use_fisheye: bool = True) -> dict:
         """
         使用棋盘格自动标定外参
+        
+        坐标系说明:
+        - 棋盘格坐标系: 左上角为原点, X轴向右, Y轴向下, Z轴向外
+        - 车辆坐标系: 后轴中心为原点, X轴向前, Y轴向左, Z轴向上
         
         Args:
             image: 包含棋盘格的图像
             camera_matrix: 相机内参矩阵
             dist_coeffs: 畸变系数
-            checkerboard_size: 棋盘格大小 (cols, rows)
+            checkerboard_size: 棋盘格大小 (cols, rows) - 内角点数量
             square_size: 方格尺寸（米）
-            board_position: 棋盘格在车辆坐标系中的位置 (x, y, z)
-            board_orientation: 棋盘格的姿态 (roll, pitch, yaw) 单位：度
+            board_to_vehicle_pose: 棋盘格左上角在车辆坐标系中的位姿 
+                                   [x, y, z, roll, pitch, yaw] 
+                                   位置单位:米, 姿态单位:度
+            rear_axle_offset: 相机相对后轴的粗略偏移 (x, y, z) 米 (可选, 未使用)
+            use_fisheye: 是否使用鱼眼相机模型 (默认: True)
             
         Returns:
             包含外参的字典
@@ -153,22 +186,48 @@ class ExtrinsicCalibration:
         criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
         corners = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
         
-        # 生成3D点（棋盘格坐标系）
+        # 生成3D点（棋盘格坐标系: 左上角为原点, X右, Y下, Z外）
         objp = np.zeros((checkerboard_size[0] * checkerboard_size[1], 3), np.float32)
         objp[:, :2] = np.mgrid[0:checkerboard_size[0], 
                                0:checkerboard_size[1]].T.reshape(-1, 2)
         objp *= square_size
         
+        # 解析棋盘格到车辆的位姿
+        board_position = board_to_vehicle_pose[:3]
+        board_orientation = board_to_vehicle_pose[3:6]
+        
         # 构建棋盘格到车辆坐标系的变换矩阵
+        # 棋盘格坐标系: X右, Y下, Z外
+        # 车辆坐标系: X前, Y左, Z上
+        
+        # 1. 先构建棋盘格姿态的旋转矩阵
         roll, pitch, yaw = [np.deg2rad(a) for a in board_orientation]
-        R_board = euler2mat(yaw, pitch, roll, 'szyx')
+        R_board_orientation = euler2mat(yaw, pitch, roll, 'szyx')
+        
+        # 2. 棋盘格坐标系到车辆坐标系的基础变换（坐标轴对齐）
+        # 棋盘格 X(右) -> 车辆 Y(左) 需要取反: -X_board = Y_vehicle
+        # 棋盘格 Y(下) -> 车辆 Z(上) 需要取反: -Y_board = Z_vehicle  
+        # 棋盘格 Z(外) -> 车辆 X(前): Z_board = X_vehicle
+        R_board_to_vehicle_base = np.array([
+            [0, 0, 1],    # 棋盘格Z -> 车辆X
+            [-1, 0, 0],   # 棋盘格-X -> 车辆Y
+            [0, -1, 0]    # 棋盘格-Y -> 车辆Z
+        ])
+        
+        # 3. 组合旋转
+        R_board_to_vehicle = R_board_orientation @ R_board_to_vehicle_base
+        
+        # 4. 构建完整的变换矩阵
         T_board_to_vehicle = np.eye(4)
-        T_board_to_vehicle[:3, :3] = R_board
+        T_board_to_vehicle[:3, :3] = R_board_to_vehicle
         T_board_to_vehicle[:3, 3] = board_position
+        
+        print(f"\n棋盘格到车辆变换矩阵:")
+        print(T_board_to_vehicle)
         
         # 使用PnP计算外参
         return self.from_pnp(objp, corners, camera_matrix, dist_coeffs, 
-                            T_board_to_vehicle)
+                            T_board_to_vehicle, use_fisheye)
     
     def transform_point_to_vehicle(self, point_camera: np.ndarray) -> np.ndarray:
         """
@@ -212,12 +271,14 @@ class ExtrinsicCalibration:
         return {
             'rotation_matrix': self.rotation_matrix.tolist(),
             'translation_vector': self.translation_vector.tolist(),
+            'translation': self.translation_vector.tolist(),
             'transformation_matrix': self.transformation_matrix.tolist(),
             'euler_angles': {
                 'roll': np.rad2deg(roll),
                 'pitch': np.rad2deg(pitch),
                 'yaw': np.rad2deg(yaw)
-            }
+            },
+            'rotation_euler': [np.rad2deg(roll), np.rad2deg(pitch), np.rad2deg(yaw)]
         }
     
     def load_from_dict(self, extrinsic_dict: dict):

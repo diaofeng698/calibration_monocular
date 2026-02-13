@@ -258,6 +258,10 @@ def main():
         
         print(f"从文件加载外参: {args.extrinsic}")
         extrinsic_data = load_calibration(args.extrinsic)
+        
+        # 修复：检查是否包含顶层 'extrinsic' 键
+        if 'extrinsic' in extrinsic_data:
+            extrinsic_data = extrinsic_data['extrinsic']
     
     # 显示外参信息
     print("\n外参信息:")

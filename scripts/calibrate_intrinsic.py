@@ -9,6 +9,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 import argparse
 import cv2
+import numpy as np
 from src.calibration import IntrinsicCalibration
 from src.utils import save_calibration, visualize_calibration
 
@@ -21,8 +22,12 @@ def main():
                        help='输出文件路径')
     parser.add_argument('--checkerboard', type=int, nargs=2, default=[12, 8],
                        help='棋盘格内角点数量 (列 行)，默认: 12 8')
-    parser.add_argument('--square-size', type=float, default=0.025,
-                       help='棋盘格方格大小(米)，默认: 0.025')
+    parser.add_argument('--square-size', type=float, default=0.038,
+                       help='棋盘格方格大小(米)，默认: 0.038')
+    parser.add_argument('--fisheye', action='store_true', default=True,
+                       help='使用鱼眼相机模型 (默认: True)')
+    parser.add_argument('--no-fisheye', action='store_false', dest='fisheye',
+                       help='使用标准针孔相机模型')
     parser.add_argument('--show', action='store_true',
                        help='显示检测到的角点')
     args = parser.parse_args()
@@ -31,6 +36,7 @@ def main():
     print("相机内参标定")
     print("="*60)
     print(f"\n标定参数:")
+    print(f"  相机模型: {'鱼眼相机' if args.fisheye else '标准针孔相机'}")
     print(f"  棋盘格大小: {args.checkerboard[0]} x {args.checkerboard[1]}")
     print(f"  方格尺寸: {args.square_size} 米")
     print(f"  图像目录: {args.input}")
@@ -39,7 +45,8 @@ def main():
     # 创建标定器
     calibrator = IntrinsicCalibration(
         checkerboard_size=tuple(args.checkerboard),
-        square_size=args.square_size
+        square_size=args.square_size,
+        use_fisheye=args.fisheye
     )
     
     # 加载图像
@@ -71,17 +78,38 @@ def main():
     print("\n" + "="*60)
     # visualize_calibration(result)
     
-    # # 测试去畸变
-    # print("\n测试去畸变效果...")
-    # test_image = sample_image.copy()
-    # undistorted = calibrator.undistort_image(test_image)
+    # 测试去畸变
+    print("\n测试去畸变效果...")
+    test_image = sample_image.copy()
+    undistorted = calibrator.undistort_image(test_image)
     
-    # # 显示对比
-    # cv2.imshow('原始图像', test_image)
-    # cv2.imshow('去畸变图像', undistorted)
-    # print("按任意键关闭窗口...")
-    # cv2.waitKey(0)
-    # cv2.destroyAllWindows()
+    # 显示对比 - 转灰度并拼接显示
+    if len(test_image.shape) == 3:
+        test_gray = cv2.cvtColor(test_image, cv2.COLOR_BGR2GRAY)
+    else:
+        test_gray = test_image
+        
+    if len(undistorted.shape) == 3:
+        undist_gray = cv2.cvtColor(undistorted, cv2.COLOR_BGR2GRAY)
+    else:
+        undist_gray = undistorted
+
+    # 缩放图像以适应屏幕显示
+    display_height = 600
+    h, w = test_gray.shape
+    aspect_ratio = w / h
+    display_width = int(display_height * aspect_ratio)
+    
+    test_show = cv2.resize(test_gray, (display_width, display_height))
+    undist_show = cv2.resize(undist_gray, (display_width, display_height))
+    
+    # 左右拼接
+    combined = np.hstack((test_show, undist_show))
+    
+    cv2.imshow('Original (Left) vs Undistorted (Right) - Gray', combined)
+    print("按任意键关闭窗口...")
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
     
     print("\n✓ 内参标定完成!")
     print(f"结果已保存到: {args.output}")

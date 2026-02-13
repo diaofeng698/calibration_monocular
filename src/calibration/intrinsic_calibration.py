@@ -11,21 +11,30 @@ from typing import List, Tuple, Optional
 class IntrinsicCalibration:
     """相机内参标定类"""
     
-    def __init__(self, checkerboard_size=(9, 6), square_size=0.025):
+    def __init__(self, checkerboard_size=(9, 6), square_size=0.025, use_fisheye=True):
         """
         初始化标定器
         
         Args:
             checkerboard_size: 棋盘格内角点数量 (cols, rows)
             square_size: 棋盘格方格大小(米)
+            use_fisheye: 是否使用鱼眼相机模型 (默认: True)
         """
         self.checkerboard_size = checkerboard_size
         self.square_size = square_size
+        self.use_fisheye = use_fisheye
         
         # 3D点（棋盘格在世界坐标系中的位置）
-        self.objp = np.zeros((checkerboard_size[0] * checkerboard_size[1], 3), np.float32)
-        self.objp[:, :2] = np.mgrid[0:checkerboard_size[0], 
-                                     0:checkerboard_size[1]].T.reshape(-1, 2)
+        if use_fisheye:
+            # 鱼眼标定需要 (N, 1, 3) 的形状
+            self.objp = np.zeros((checkerboard_size[0] * checkerboard_size[1], 1, 3), np.float32)
+            self.objp[:, 0, :2] = np.mgrid[0:checkerboard_size[0], 
+                                         0:checkerboard_size[1]].T.reshape(-1, 2)
+        else:
+            # 标准相机标定使用 (N, 3) 的形状
+            self.objp = np.zeros((checkerboard_size[0] * checkerboard_size[1], 3), np.float32)
+            self.objp[:, :2] = np.mgrid[0:checkerboard_size[0], 
+                                       0:checkerboard_size[1]].T.reshape(-1, 2)
         self.objp *= square_size
         
         # 存储所有图像的3D点和2D点
@@ -38,6 +47,7 @@ class IntrinsicCalibration:
         self.rvecs = None
         self.tvecs = None
         self.rms_error = None
+        self.fisheye_model = use_fisheye
     
     def find_corners(self, image: np.ndarray, show=False) -> Optional[np.ndarray]:
         """
@@ -111,16 +121,38 @@ class IntrinsicCalibration:
         if len(self.objpoints) < 3:
             raise ValueError(f"需要至少3张图像进行标定，当前只有{len(self.objpoints)}张")
         
-        print(f"使用 {len(self.objpoints)} 张图像进行标定...")
+        camera_model = 'fisheye' if self.use_fisheye else 'pinhole'
+        print(f"使用 {len(self.objpoints)} 张图像进行标定 (模型: {camera_model})...")
         
-        # 执行标定
-        ret, camera_matrix, dist_coeffs, rvecs, tvecs = cv2.calibrateCamera(
-            self.objpoints,
-            self.imgpoints,
-            image_size,
-            None,
-            None
-        )
+        if self.use_fisheye:
+            # 鱼眼相机标定
+            camera_matrix = np.zeros((3, 3))
+            dist_coeffs = np.zeros((4, 1))
+            rvecs = [np.zeros((1, 1, 3), dtype=np.float64) for _ in range(len(self.objpoints))]
+            tvecs = [np.zeros((1, 1, 3), dtype=np.float64) for _ in range(len(self.objpoints))]
+            
+            calibration_flags = cv2.fisheye.CALIB_RECOMPUTE_EXTRINSIC + cv2.fisheye.CALIB_CHECK_COND + cv2.fisheye.CALIB_FIX_SKEW
+
+            ret, camera_matrix, dist_coeffs, rvecs, tvecs = cv2.fisheye.calibrate(
+                self.objpoints,
+                self.imgpoints,
+                image_size,
+                camera_matrix,
+                dist_coeffs,
+                rvecs,
+                tvecs,
+                calibration_flags,
+                (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 1e-6)
+            )
+        else:
+            # 标准针孔相机标定
+            ret, camera_matrix, dist_coeffs, rvecs, tvecs = cv2.calibrateCamera(
+                self.objpoints,
+                self.imgpoints,
+                image_size,
+                None,
+                None
+            )
         
         self.camera_matrix = camera_matrix
         self.dist_coeffs = dist_coeffs
@@ -137,7 +169,8 @@ class IntrinsicCalibration:
             'distortion_coeffs': dist_coeffs,
             'rms_error': ret,
             'image_width': image_size[0],
-            'image_height': image_size[1]
+            'image_height': image_size[1],
+            'camera_model': camera_model
         }
     
     def load_images_from_folder(self, folder_path: str) -> int:
@@ -191,16 +224,25 @@ class IntrinsicCalibration:
             raise ValueError("请先进行标定")
         
         h, w = image.shape[:2]
-        new_camera_matrix, roi = cv2.getOptimalNewCameraMatrix(
-            self.camera_matrix, self.dist_coeffs, (w, h), 1, (w, h)
-        )
         
-        undistorted = cv2.undistort(image, self.camera_matrix, self.dist_coeffs, 
-                                    None, new_camera_matrix)
-        
-        # 裁剪图像
-        x, y, w, h = roi
-        undistorted = undistorted[y:y+h, x:x+w]
+        if self.use_fisheye:
+            # 鱼眼相机去畸变
+            new_camera_matrix = cv2.fisheye.estimateNewCameraMatrixForUndistortRectify(
+                self.camera_matrix, self.dist_coeffs, (w, h), np.eye(3), balance=1
+            )
+            
+            map1, map2 = cv2.fisheye.initUndistortRectifyMap(
+                self.camera_matrix, self.dist_coeffs, np.eye(3),
+                new_camera_matrix, (w, h), cv2.CV_16SC2
+            )
+            
+            undistorted = cv2.remap(image, map1, map2, interpolation=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
+        else:
+            # 标准针孔相机去畸变
+            new_camera_matrix, roi = cv2.getOptimalNewCameraMatrix(
+                self.camera_matrix, self.dist_coeffs, (w, h), 1, (w, h)
+            )
+            undistorted = cv2.undistort(image, self.camera_matrix, self.dist_coeffs, None, new_camera_matrix)
         
         return undistorted
     
@@ -216,10 +258,16 @@ class IntrinsicCalibration:
         
         total_error = 0
         for i in range(len(self.objpoints)):
-            imgpoints2, _ = cv2.projectPoints(
-                self.objpoints[i], self.rvecs[i], self.tvecs[i],
-                self.camera_matrix, self.dist_coeffs
-            )
+            if self.use_fisheye:
+                imgpoints2, _ = cv2.fisheye.projectPoints(
+                    self.objpoints[i], self.rvecs[i], self.tvecs[i],
+                    self.camera_matrix, self.dist_coeffs
+                )
+            else:
+                imgpoints2, _ = cv2.projectPoints(
+                    self.objpoints[i], self.rvecs[i], self.tvecs[i],
+                    self.camera_matrix, self.dist_coeffs
+                )
             error = cv2.norm(self.imgpoints[i], imgpoints2, cv2.NORM_L2) / len(imgpoints2)
             total_error += error
         
